@@ -71,12 +71,23 @@ def svm_loss_vectorized(W, X, y, reg):
   # Implement a vectorized version of the structured SVM loss, storing the    #
   # result in loss.                                                           #
   #############################################################################
-  pass
+  S = X@W
+  S_correct = S[range(S.shape[0]), y][:, np.newaxis]
+  margin = S-S_correct+1
+  # Create mask to select j!=y_i
+  margin[range(margin.shape[0]), y] = 0
+  # Calculate loss
+  loss = 1/X.shape[0]*np.sum(np.maximum(0, margin))
+  loss += reg * np.sum(W * W)
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
+  margin_larger_zero = (margin > 0).astype(int)
+  row_sums = np.sum(margin_larger_zero, axis=1)
+  margin_larger_zero[range(margin.shape[0]), y] = -row_sums.T
 
-
+  dW = 1/X.shape[0]*X.T@margin_larger_zero
+  dW += reg*W
   #############################################################################
   # TODO:                                                                     #
   # Implement a vectorized version of the gradient for the structured SVM     #
