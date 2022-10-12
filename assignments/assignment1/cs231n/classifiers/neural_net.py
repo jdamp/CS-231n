@@ -1,10 +1,10 @@
 from __future__ import print_function
 
-from builtins import range
 from builtins import object
+from builtins import range
+
 import numpy as np
-import matplotlib.pyplot as plt
-from past.builtins import xrange
+
 
 class TwoLayerNet(object):
     """
