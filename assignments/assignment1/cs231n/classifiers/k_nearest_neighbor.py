@@ -2,6 +2,8 @@ from builtins import range
 from builtins import object
 import numpy as np
 
+from collections import Counter
+
 class KNearestNeighbor(object):
     """ a kNN classifier with L2 distance """
 
@@ -74,9 +76,7 @@ class KNearestNeighbor(object):
                 # not use a loop over dimension, nor use np.linalg.norm().          #
                 #####################################################################
                 # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-                pass
-
+                dists[i, j] = np.sqrt(np.sum((X[i] - self.X_train[j])**2))
                 # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         return dists
 
@@ -98,9 +98,7 @@ class KNearestNeighbor(object):
             # Do not use np.linalg.norm().                                        #
             #######################################################################
             # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-            pass
-
+            dists[i] = np.sqrt(np.sum((X[i] - self.X_train) ** 2, axis=1))
             # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         return dists
 
@@ -128,9 +126,10 @@ class KNearestNeighbor(object):
         #       and two broadcast sums.                                         #
         #########################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-        pass
-
+        X_square = np.diagonal(X@X.T)
+        Y_square = np.diagonal(self.X_train@self.X_train.T)
+        mixture = - 2 * X@self.X_train.T
+        dists = np.sqrt(X_square[:, np.newaxis] + Y_square[np.newaxis] + mixture)
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         return dists
 
@@ -161,8 +160,10 @@ class KNearestNeighbor(object):
             # Hint: Look up the function numpy.argsort.                             #
             #########################################################################
             # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-            pass
+            # We do not need sorting inside the k nearest elements so using argpartition
+            # instead of argsort is enough
+            k_next_indices = np.argpartition(dists[i, :], k)[:k]
+            closest_y = self.y_train[k_next_indices]
 
             # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
             #########################################################################
@@ -173,9 +174,10 @@ class KNearestNeighbor(object):
             # label.                                                                #
             #########################################################################
             # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-            pass
-
+            counter = Counter(sorted(closest_y))
+            # most common returns a list of tuples [(element_0, count_0),
+            # (element_1, count_1), ...] where element_0 is the most common
+            y_pred[i] = counter.most_common(1)[0][0]
             # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
         return y_pred
