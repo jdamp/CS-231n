@@ -30,6 +30,7 @@ class LinearClassifier(object):
         Outputs:
         A list containing the value of the loss function at each training iteration.
         """
+        rng = np.random.default_rng()
         num_train, dim = X.shape
         num_classes = np.max(y) + 1 # assume y takes values 0...K-1 where K is number of classes
         if self.W is None:
@@ -55,7 +56,9 @@ class LinearClassifier(object):
             #########################################################################
             # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-            pass
+            batch_idx = rng.choice(num_train, batch_size)
+            X_batch = X[batch_idx]
+            y_batch = y[batch_idx]
 
             # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -69,8 +72,7 @@ class LinearClassifier(object):
             # Update the weights using the gradient and the learning rate.          #
             #########################################################################
             # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-            pass
+            self.W = self.W - learning_rate * grad
 
             # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -100,7 +102,8 @@ class LinearClassifier(object):
         ###########################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        scores = X.dot(self.W)
+        y_pred = np.argmax(scores,  axis=1)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         return y_pred
