@@ -1,6 +1,17 @@
 import numpy as np
 
 
+def stable_softmax(x, axis=-1):
+    """
+    Inputs:
+    - x: A numpy array
+    - axis: (int) Over which axis the summation should be done
+    """
+    z = x - np.max(x)
+    exp = np.exp(z)
+    return exp/np.sum(exp, axis, keepdims=True)
+
+
 def softmax_loss_naive(W, X, y, reg):
     """
     Softmax loss function, naive implementation (with loops)
@@ -30,9 +41,17 @@ def softmax_loss_naive(W, X, y, reg):
     # regularization!                                                           #
     #############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    n, _ = X.shape
+    _, c = W.shape
+    for i in range(n):
+        softmax = stable_softmax(X[i, :].dot(W))
+        loss -= np.log(softmax[y[i]])
+        softmax[y[i]] -= 1
+        dW += np.outer(X[i], softmax)
 
-    pass
-
+    # Add regularization
+    loss = loss / n + reg * np.sum(W**2)
+    dW = dW / n + 2 * reg * W
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
     return loss, dW
@@ -55,8 +74,16 @@ def softmax_loss_vectorized(W, X, y, reg):
     # regularization!                                                           #
     #############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    n, _ = X.shape
 
-    pass
+    softmax = stable_softmax(X.dot(W))  # shape (N, C)
+    # pick one entry according to the label in y
+    softmax_y = softmax[range(n), y]   # shape (N,)
+    loss = -np.sum(np.log(softmax_y)) / n + reg * np.sum(W**2)
+
+    # change softmax for gradient
+    softmax[range(n), y] -= 1
+    dW = X.T.dot(softmax) / n + 2 * reg * W
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
