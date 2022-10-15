@@ -73,8 +73,17 @@ class FullyConnectedNet(object):
         # parameters should be initialized to zeros.                               #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+        rng = np.random.default_rng()
 
-        pass
+        # Define dimension of all layers of the network
+        input_dims = [input_dim, *hidden_dims]
+        output_dims = [*hidden_dims, num_classes]
+
+        for layer in range(self.num_layers):
+            dim_in, dim_out = input_dims[layer], output_dims[layer]
+            self.params[f"W{layer+1}"] = rng.normal(scale=weight_scale,
+                                                    size=(dim_in, dim_out))
+            self.params[f"b{layer+1}"] = np.zeros(shape=(1, dim_out))
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -147,8 +156,16 @@ class FullyConnectedNet(object):
         # layer, etc.                                                              #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-        pass
+        # Store layer outputs which are needed for backpropagation later
+        cache = {}
+        for layer in range(self.num_layers):
+            W, b = self.params[f"W{layer+1}"], self.params[f"b{layer+1}"]
+            # skip relu on output layer
+            if layer < self.num_layers - 1:
+                X, cache[layer] = affine_relu_forward(X, W, b)
+            # just output the scores for the output layer
+            else:
+                scores, cache[layer] = affine_forward(X, W, b)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -174,8 +191,21 @@ class FullyConnectedNet(object):
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+        loss, dout = softmax_loss(scores, y)
+        # regularization: get all weight parameters, skip biases
+        weights = [w for name, w in self.params.items() if "W" in name]
+        loss += 0.5 * self.reg * np.sum([np.sum(w**2) for w in weights])
 
-        pass
+        for layer in reversed(range(self.num_layers)):
+            W = self.params[f"W{layer + 1}"]
+            if layer == self.num_layers - 1:
+                # only affine without relu
+                dout, dw, db = affine_backward(dout, cache[layer])
+            else:
+                dout, dw, db = affine_relu_backward(dout, cache[layer])
+
+            grads[f"W{layer + 1}"] = dw + self.reg * W
+            grads[f"b{layer + 1}"] = db
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################

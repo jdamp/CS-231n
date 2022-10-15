@@ -68,8 +68,8 @@ def sgd_momentum(w, dw, config=None):
     # the next_w variable. You should also use and update the velocity v.     #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-    pass
+    v = config["momentum"] * v - config["learning_rate"] * dw
+    next_w = w + v
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -106,8 +106,14 @@ def rmsprop(w, dw, config=None):
     # config['cache'].                                                        #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    cache = config["cache"]
+    decay_rate = config["decay_rate"]
+    lr = config["learning_rate"]
+    eps = config["epsilon"]
 
-    pass
+    cache = decay_rate * cache + (1 - decay_rate) * dw**2
+    next_w = w - lr * dw / (np.sqrt(cache) + eps)
+    config["cache"] = cache
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -151,8 +157,18 @@ def adam(w, dw, config=None):
     # using it in any calculations.                                           #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    # unpack parameters that are not updated
+    beta1, beta2 = config["beta1"], config["beta2"]
+    lr, eps = config["learning_rate"], config["epsilon"]
+    # Start update steps
+    config["t"] += 1  # time step
+    config["m"] = beta1 * config["m"] + (1 - beta1) * dw  # momentum
+    mt = config["m"] / (1 - beta1**config["t"])  # with bias correction mechanism
 
-    pass
+    config["v"] = beta2 * config["v"] + (1 - beta2) * dw**2  # Now the velocities
+    vt = config["v"] / (1 - beta2**config["t"])  # again with bias correction
+
+    next_w = w - lr * mt/(np.sqrt(vt) + eps)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
