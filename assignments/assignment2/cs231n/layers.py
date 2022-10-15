@@ -1,4 +1,6 @@
 from builtins import range
+from math import gamma
+from statistics import variance
 import numpy as np
 
 
@@ -193,7 +195,7 @@ def batchnorm_forward(x, gamma, beta, bn_param):
 
     Returns a tuple of:
     - out: of shape (N, D)
-    - cache: A tuple of values needed in the backward pass
+    - cache: A tuple of (2 * std) values needed in the backward pass
     """
     mode = bn_param["mode"]
     eps = bn_param.get("eps", 1e-5)
@@ -227,9 +229,38 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         # might prove to be helpful.                                          #
         #######################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+        # Go through all steps of the computational graph
+        # 1st step: mean
+        mu = np.mean(x, axis=0)
 
-        pass
+        # 2nd step: subtract from x
+        x_mu = x - mu
 
+        # 3rd step: square
+        x_musq = x_mu**2
+
+        # 4th step: mean of xmu_2 (a.k.a. variance of x)
+        var = np.mean(x_musq, axis=0)
+
+        # 5th step: std = sqrt(var + eps)
+        std = np.sqrt(var + eps)
+
+        # 6th step: inverse
+        stdinv = 1./std
+
+        # 7th step multiply x_mu and stdinv to get xhat
+        xhat =  x_mu * stdinv
+
+        # 8th step: multiply by gamma
+        xhatgamma = xhat * gamma
+
+        # 9th step: add beta
+        out = xhatgamma + beta
+
+        cache = (xhat, stdinv, std, var, x_mu, gamma)
+
+        running_mean = momentum * running_mean + (1 - momentum) * mu
+        running_var = momentum * running_var + (1 - momentum) * var
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         #######################################################################
         #                           END OF YOUR CODE                          #
@@ -243,7 +274,8 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         #######################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        x_hat = (x - running_mean) / np.sqrt(running_var + eps)
+        out = gamma * x_hat + beta
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         #######################################################################
@@ -283,8 +315,42 @@ def batchnorm_backward(dout, cache):
     # might prove to be helpful.                                              #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    xhat, stdinv, std, var, x_mu, gamma = cache
+    N, D = dout.shape
+    # Go back through the computational graph
 
-    pass
+    # 9th step
+    dbeta = dout.sum(axis=0)
+
+    # 8th step
+    dgamma = (dout * xhat).sum(axis=0)
+    dxhat = gamma * dout
+
+    # 7th step
+    dx_mu1 = stdinv * dxhat
+    dstdinv = np.sum(x_mu*dxhat, axis=0)
+
+    # 6th step
+    dstd = dstdinv * (-1. / std**2)
+
+    # 5th step
+    dvar = 0.5 * dstd * 1. /std
+
+    # 4th step
+    dx_musq = 1. / N * np.ones((N, D)) * dvar
+
+    # 3rd step
+    dx_mu2 = 2* x_mu * dx_musq
+
+    # 2nd step: sum up as the two paths of the graph merge here
+    dx1 = dx_mu1 + dx_mu2
+    dmu = -1. * np.sum(dx1, axis=0)
+
+    #1st step:
+    dx2 = 1. / N * np.ones((N, D)) * dmu
+
+    # finally    
+    dx = dx1 + dx2
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -318,7 +384,23 @@ def batchnorm_backward_alt(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    x, batch_mean, batch_var, batch_std, x_hat, gamma, beta = cache
+    n = x.shape[0]
+    dx_hat = dout * gamma
+    dgamma = np.sum(dout * x_hat, axis=0)
+    dbeta = np.sum(dout, axis=0)
+    
+    
+    dbatch_var = np.sum(dx_hat * -0.5 * (x-batch_mean)/batch_std**3, axis=0)
+    dbatch_mu1 = np.sum(dx_hat * (-1)/batch_var, axis=0)
+    dbatch_mu2 = np.sum(dbatch_var * (-2 * (x - batch_mean)/n), axis=0)
+    dbatch_mu = dbatch_mu1 + dbatch_mu2
+    
+    dx1 = 0
+    dx2 = 0
+    dx3 = (dbatch_mu/n).reshape(1, -1)
+    
+    dx = 0
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
