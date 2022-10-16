@@ -85,6 +85,10 @@ class FullyConnectedNet(object):
                                                     size=(dim_in, dim_out))
             self.params[f"b{layer+1}"] = np.zeros(shape=(1, dim_out))
 
+            #if self.normalization == "batchnorm":
+            self.params[f"gamma{layer+1}"] = np.ones(shape=(1, dim_out))
+            self.params[f"beta{layer+1}"] = np.zeros(shape=(1, dim_out))
+
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
         #                             END OF YOUR CODE                             #
@@ -158,14 +162,13 @@ class FullyConnectedNet(object):
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         # Store layer outputs which are needed for backpropagation later
         cache = {}
+
         for layer in range(self.num_layers):
             W, b = self.params[f"W{layer+1}"], self.params[f"b{layer+1}"]
-            # skip relu on output layer
-            if layer < self.num_layers - 1:
-                X, cache[layer] = affine_relu_forward(X, W, b)
-            # just output the scores for the output layer
-            else:
-                scores, cache[layer] = affine_forward(X, W, b)
+            gamma = self.params[f"gamma{layer+1}"]
+            beta = self.params[f"beta{layer+1}"]
+            X, cache = self.forward(X, layer, self.num_layers-1)
+        scores = X
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -202,6 +205,13 @@ class FullyConnectedNet(object):
                 # only affine without relu
                 dout, dw, db = affine_backward(dout, cache[layer])
             else:
+                if self.normalization == "batchnorm":
+                    layer_func_backward = affine_relu_bn_backward
+                    args = X, W, b, gamma, beta, self.bn_params[layer]
+                else:
+                    layer_func_backward = affine_relu_backward
+                    args = X, W, b     
+                X, cache[layer] = layer_func_forward(*args)
                 dout, dw, db = affine_relu_backward(dout, cache[layer])
 
             grads[f"W{layer + 1}"] = dw + self.reg * W
@@ -213,3 +223,22 @@ class FullyConnectedNet(object):
         ############################################################################
 
         return loss, grads
+
+
+    def forward(self, X, layer, lastlayer):
+        W, b = self.params[f"W{layer+1}"], self.params[f"b{layer+1}"]
+        gamma = self.params[f"gamma{layer+1}"]
+        beta = self.params[f"beta{layer+1}"]
+        # skip relu on output layer
+        if layer < lastlayer:
+            if self.normalization == "batchnorm":
+                layer_func_forward = affine_relu_bn_forward
+                args = X, W, b, gamma, beta, self.bn_params[layer]
+            else:
+                layer_func_forward = affine_relu_forward
+                args = X, W, b     
+            out, cache = layer_func_forward(*args)
+        # just output the scores for the output layer
+        else:
+            out, cache = affine_forward(X, W, b)
+        return out, cache

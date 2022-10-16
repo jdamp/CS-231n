@@ -384,24 +384,15 @@ def batchnorm_backward_alt(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    x, batch_mean, batch_var, batch_std, x_hat, gamma, beta = cache
-    n = x.shape[0]
-    dx_hat = dout * gamma
-    dgamma = np.sum(dout * x_hat, axis=0)
-    dbeta = np.sum(dout, axis=0)
-    
-    
-    dbatch_var = np.sum(dx_hat * -0.5 * (x-batch_mean)/batch_std**3, axis=0)
-    dbatch_mu1 = np.sum(dx_hat * (-1)/batch_var, axis=0)
-    dbatch_mu2 = np.sum(dbatch_var * (-2 * (x - batch_mean)/n), axis=0)
-    dbatch_mu = dbatch_mu1 + dbatch_mu2
-    
-    dx1 = 0
-    dx2 = 0
-    dx3 = (dbatch_mu/n).reshape(1, -1)
-    
-    dx = 0
+    xhat, stdinv, std, var, x_mu, gamma = cache
+    n = dout.shape[0]
 
+    dbeta = np.sum(dout, axis=0)
+    dgamma = np.sum(xhat*dout, axis=0)
+    dxhat = dout * gamma
+
+    # Fits in a single 80-char line if I leave out the spaces :-)
+    dx = (n*dxhat-np.sum(dxhat,axis=0)-xhat*np.sum(dxhat*xhat,axis=0))/(n*std)
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
     #                             END OF YOUR CODE                            #
