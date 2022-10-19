@@ -257,10 +257,14 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         # 9th step: add beta
         out = xhatgamma + beta
 
-        cache = (xhat, stdinv, std, var, x_mu, gamma)
+        # axis to sum for the backward pass (0 for batch norm, 1 for layer norm)
+        axis = bn_param.get('axis', 0)
 
-        running_mean = momentum * running_mean + (1 - momentum) * mu
-        running_var = momentum * running_var + (1 - momentum) * var
+        cache = (xhat, stdinv, std, var, x_mu, gamma, axis)
+        # Only use running means for batch norm
+        if axis == 0:
+          running_mean = momentum * running_mean + (1 - momentum) * mu
+          running_var = momentum * running_var + (1 - momentum) * var
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         #######################################################################
         #                           END OF YOUR CODE                          #
@@ -315,15 +319,20 @@ def batchnorm_backward(dout, cache):
     # might prove to be helpful.                                              #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-    xhat, stdinv, std, var, x_mu, gamma = cache
+    xhat, stdinv, std, var, x_mu, gamma, axis = cache
     N, D = dout.shape
     # Go back through the computational graph
+    # Following the great explanation found here:
+    # https://kratzert.github.io/2016/02/12/understanding-the-gradient-flow-through-the-batch-normalization-layer.html
+  
+    # If we use this to run the layernorm backward pass we need to consider
+    # that most elements of the cache are transposed
 
     # 9th step
-    dbeta = dout.sum(axis=0)
+    dbeta = dout.sum(axis=axis)
 
     # 8th step
-    dgamma = (dout * xhat).sum(axis=0)
+    dgamma = (dout * xhat).sum(axis=axis)
     dxhat = gamma * dout
 
     # 7th step
@@ -384,15 +393,17 @@ def batchnorm_backward_alt(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    xhat, stdinv, std, var, x_mu, gamma = cache
+    xhat, stdinv, std, var, x_mu, gamma, axis = cache
     n = dout.shape[0]
-
-    dbeta = np.sum(dout, axis=0)
-    dgamma = np.sum(xhat*dout, axis=0)
+    
+    dbeta = np.sum(dout, axis=axis)
+    dgamma = np.sum(xhat*dout, axis=axis)
+    
     dxhat = dout * gamma
 
     # Fits in a single 80-char line if I leave out the spaces :-)
     dx = (n*dxhat-np.sum(dxhat,axis=0)-xhat*np.sum(dxhat*xhat,axis=0))/(n*std)
+    
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
     #                             END OF YOUR CODE                            #
@@ -435,8 +446,18 @@ def layernorm_forward(x, gamma, beta, ln_param):
     # the batch norm code and leave it almost unchanged?                      #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-    pass
+    # The operation is very similar to what we are doing in batchnorm, but
+    # everything is transposed
+    # Since gamma and beta are received as 1D arrays, they are reshaped instead
+    # to insert an additional axis.
+    
+    # always use training mode
+    ln_param.setdefault("mode", "train")
+    ln_param.setdefault("axis", 1)
+    out_transposed, cache = batchnorm_forward(x.T, gamma.reshape(-1, 1),
+                                              beta.reshape(-1, 1), ln_param)
+    
+    out = out_transposed.T
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -470,7 +491,9 @@ def layernorm_backward(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    dx, dgamma, dbeta = batchnorm_backward_alt(dout.T, cache)
+    # transpose back
+    dx = dx.T
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################

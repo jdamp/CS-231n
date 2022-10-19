@@ -76,18 +76,18 @@ class FullyConnectedNet(object):
         rng = np.random.default_rng()
 
         # Define dimension of all layers of the network
-        input_dims = [input_dim, *hidden_dims]
-        output_dims = [*hidden_dims, num_classes]
+        self.input_dims = [input_dim, *hidden_dims]
+        self.output_dims = [*hidden_dims, num_classes]
 
         for layer in range(self.num_layers):
-            dim_in, dim_out = input_dims[layer], output_dims[layer]
+            dim_in, dim_out = self.input_dims[layer], self.output_dims[layer]
             self.params[f"W{layer+1}"] = rng.normal(scale=weight_scale,
                                                     size=(dim_in, dim_out))
             self.params[f"b{layer+1}"] = np.zeros(shape=(1, dim_out))
 
-            #if self.normalization == "batchnorm":
-            self.params[f"gamma{layer+1}"] = np.ones(shape=(1, dim_out))
-            self.params[f"beta{layer+1}"] = np.zeros(shape=(1, dim_out))
+            if self.normalization is not None and layer < self.num_layers - 1:
+                self.params[f"gamma{layer+1}"] = np.ones(shape=(1, dim_out))
+                self.params[f"beta{layer+1}"] = np.zeros(shape=(1, dim_out))
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -164,10 +164,8 @@ class FullyConnectedNet(object):
         cache = {}
 
         for layer in range(self.num_layers):
-            W, b = self.params[f"W{layer+1}"], self.params[f"b{layer+1}"]
-            gamma = self.params[f"gamma{layer+1}"]
-            beta = self.params[f"beta{layer+1}"]
-            X, cache = self.forward(X, layer, self.num_layers-1)
+            X, cache[layer] = self.forward(X, layer)
+            
         scores = X
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
@@ -200,22 +198,7 @@ class FullyConnectedNet(object):
         loss += 0.5 * self.reg * np.sum([np.sum(w**2) for w in weights])
 
         for layer in reversed(range(self.num_layers)):
-            W = self.params[f"W{layer + 1}"]
-            if layer == self.num_layers - 1:
-                # only affine without relu
-                dout, dw, db = affine_backward(dout, cache[layer])
-            else:
-                if self.normalization == "batchnorm":
-                    layer_func_backward = affine_relu_bn_backward
-                    args = X, W, b, gamma, beta, self.bn_params[layer]
-                else:
-                    layer_func_backward = affine_relu_backward
-                    args = X, W, b     
-                X, cache[layer] = layer_func_forward(*args)
-                dout, dw, db = affine_relu_backward(dout, cache[layer])
-
-            grads[f"W{layer + 1}"] = dw + self.reg * W
-            grads[f"b{layer + 1}"] = db
+            dout, grads = self.backward(dout, cache, grads, layer)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -225,15 +208,27 @@ class FullyConnectedNet(object):
         return loss, grads
 
 
-    def forward(self, X, layer, lastlayer):
+    def forward(self, X, layer):
+        """
+        Compute one foward pass through a single layer l of the fully connected net
+        The dimension of input and output are defined by self.input_dims[layer] and
+        self.output_dims[layer].        
+        Inputs:
+        - X: Array of input data of shape (N, d_in)
+        - layer: Number of the layer
+
+        Returns:
+        - out: of shape (N, d_out)
+        - cache: A tuple of quantities from the forward pass needed for the backward pass
+        """
         W, b = self.params[f"W{layer+1}"], self.params[f"b{layer+1}"]
-        gamma = self.params[f"gamma{layer+1}"]
-        beta = self.params[f"beta{layer+1}"]
         # skip relu on output layer
-        if layer < lastlayer:
-            if self.normalization == "batchnorm":
-                layer_func_forward = affine_relu_bn_forward
-                args = X, W, b, gamma, beta, self.bn_params[layer]
+        if layer < self.num_layers - 1:
+            if self.normalization is not None:
+                gamma = self.params[f"gamma{layer+1}"]
+                beta = self.params[f"beta{layer+1}"]
+                layer_func_forward = affine_relu_norm_forward
+                args = X, W, b, gamma, beta, self.bn_params[layer], self.normalization
             else:
                 layer_func_forward = affine_relu_forward
                 args = X, W, b     
@@ -242,3 +237,44 @@ class FullyConnectedNet(object):
         else:
             out, cache = affine_forward(X, W, b)
         return out, cache
+
+
+    def backward(self, dout, cache, grads, layer):
+        """
+        Compute one backward pass through a single layer l of the fully connected net
+        
+        Inputs:
+        - dout: Upstream gradient, of shape (N, d_out)
+        - cache: Tuple of intermediate quantities from the forward pass
+        - grads: Dictionary with all current gradient values
+        - layer: Number of the layer
+
+        Returns:
+        - dout: Gradient of this layer with respect to x, of shape (N, d_in)
+        - grads: Updated dictionary of gradients
+        """
+   
+        w = self.params[f"W{layer+1}"]
+        # only affine without relu in last layer
+        if layer == self.num_layers - 1:
+            dout, dw, db = affine_backward(dout, cache[layer])
+        else:
+            if self.normalization is not None:
+                dout, dw, db, dgamma, dbeta = affine_relu_norm_backward(dout, cache[layer],
+                                                                        self.normalization)
+            else:
+                dout, dw, db = affine_relu_backward(dout, cache[layer])
+
+        # These are always updated
+        grads[f"W{layer + 1}"] = dw + self.reg * w
+        grads[f"b{layer + 1}"] = db
+        
+        # These only if batchnorm is applied
+        if self.normalization is not None and layer != self.num_layers - 1:
+            grads[f"gamma{layer + 1}"] = dgamma
+            grads[f"beta{layer + 1}"] = dbeta
+
+        return dout, grads
+    
+    
+    
