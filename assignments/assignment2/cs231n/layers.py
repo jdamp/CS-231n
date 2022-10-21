@@ -624,8 +624,45 @@ def conv_forward_naive(x, w, b, conv_param):
     # Hint: you can use the function np.pad for padding.                      #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    # extract the shapes and convolution parameters:
+    N, C, H, W = x.shape
+    F, C, HH, WW = w.shape    
+    pad = conv_param["pad"]
+    stride = conv_param["stride"]
 
-    pass
+    # calculate out shapes:
+    Hprime = 1 + (H + 2 * pad - HH) // stride
+    Wprime = 1 + (W + 2 * pad - WW) // stride
+
+    # Padding (default vaule of np.pad is 0)
+    x_pad = np.pad(x, ((0,), (0,), (pad,), (pad,)), 'constant')
+
+    # Try to implement im2col as explained on https://cs231n.github.io/convolutional-networks/
+    # First of all we need to get all possible HH x WW windows in the padded
+    # image. Fortunately, there is a numpy function available exactly for this purpose:
+    windows = np.lib.stride_tricks.sliding_window_view(x_pad, (HH, WW), (2, 3))
+
+    # Apply Strides: dimensions of the windows are (N, C, n_h, n_w, HH, WW),
+    # where n_h and n_w are the number of adjacent height/ width windows.
+    # The stride therefore has to be applied along the axes 2 and 3.
+    window_strides = windows[:, :, ::stride, ::stride, :, :]
+
+    # I need to be careful now when reshaping: window_strides has the shape
+    # (N, C, H', W', HH, WW), I want to reshape to (N, C*HH*WW, H'*W').
+    # Therefore, I need use np.moveaxis to change the window_strides shape to
+    # (N, C, HH, WW, H', W') so that the subsequent reshape works as desired
+    window_strides = np.moveaxis(window_strides, source=(2, 3), destination=(4, 5))
+    x_col = window_strides.reshape(N, C*HH*WW, Hprime*Wprime)
+    w_row = w.reshape(F, C*HH*WW)
+
+    # In the lecture:
+    # X_col.shape = (N, C*HH*WW, H'*W')
+    # w_row.shape = (F, C*HH*WW)
+    # desired out shape: (N, F, H'*W')
+    # tensorproduct out shape: (F, N, H'*W')
+    # => need to swap axes 0 and 1 for the tensorproduct result
+    mul = np.tensordot(w_row, x_col, axes=(1, 1)).swapaxes(0, 1)
+    out = mul.reshape(N, F, Hprime, Wprime) + np.expand_dims(b, (0, 2, 3))
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
