@@ -2,6 +2,7 @@ from builtins import range
 from math import gamma
 from statistics import variance
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 
 
 def affine_forward(x, w, b):
@@ -626,7 +627,7 @@ def conv_forward_naive(x, w, b, conv_param):
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     # extract the shapes and convolution parameters:
     N, C, H, W = x.shape
-    F, C, HH, WW = w.shape    
+    F, C, HH, WW = w.shape
     pad = conv_param["pad"]
     stride = conv_param["stride"]
 
@@ -640,7 +641,7 @@ def conv_forward_naive(x, w, b, conv_param):
     # Try to implement im2col as explained on https://cs231n.github.io/convolutional-networks/
     # First of all we need to get all possible HH x WW windows in the padded
     # image. Fortunately, there is a numpy function available exactly for this purpose:
-    windows = np.lib.stride_tricks.sliding_window_view(x_pad, (HH, WW), (2, 3))
+    windows = sliding_window_view(x_pad, (HH, WW), (2, 3))
 
     # Apply Strides: dimensions of the windows are (N, C, n_h, n_w, HH, WW),
     # where n_h and n_w are the number of adjacent height/ width windows.
@@ -668,7 +669,8 @@ def conv_forward_naive(x, w, b, conv_param):
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
-    cache = (x, w, b, conv_param)
+    # We want to cache the padded window
+    cache = (x_pad, w, b, conv_param)
     return out, cache
 
 
@@ -689,8 +691,55 @@ def conv_backward_naive(dout, cache):
     # TODO: Implement the convolutional backward pass.                        #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    x_pad, w, b, conv_param = cache
+    
+    N, F, Hprime, Wprime = dout.shape
+    F, C, HH, WW = w.shape
+       
+    stride = conv_param["stride"]
+    pad = conv_param["pad"]
+    
+    # The backward pass is still a convolution/cross-correlation operation, but
+    # between the upstream gradient and our input image
+    
+    
+    # I've learned of the existence of the function np.einsum
+    # It exactly works like the Einstein sum convention from physics, i.e.
+    # indices that occur twice are summed.
+    # So for the convolution/cross correlation between window_strides and
+    # the upstream gradient dout, the correct axes to contract can be
+    # identified by staring at the shapes and just summing over all axes
+    # we dont want to have in the input
+    # (N, C, H', W', HH, WW) x (N, F, H', W') -> (F, C, HH, WW)
+    #  a  b  c   d    e   f     a  g  c   d   ->  g  b  e   f 
+    windows = sliding_window_view(x_pad, (HH, WW), (2, 3))
+    window_strides = windows[:, :, ::stride, ::stride, :, :]
+   
+    dw = np.einsum("abcdef,agcd->gbef", window_strides, dout)
+ 
+    # For the bias:
+    db = dout.sum(axis=(0, 2, 3))
+    
+    # For dx: I was not abled to come up with a solution.
+    # So let's do the backward pass a bit more manually:
+    dx_pad = np.zeros_like(x_pad)
+    for h_out in range(Hprime):
+        for w_out in range(Wprime):
+            h_stride = h_out * stride
+            w_stride = w_out * stride         
+            # Select local region in output of size
+            dout_loc = dout[..., h_out, w_out] 
+            # Contraction along "F" axis of number of output features
+            #  Why don't I need to "flip" the Kernel?
+            dconv = np.tensordot(dout_loc, w, axes=(1, 0))
+            # Only consider the windows that were actually used in the forward pass
+            window_slice = np.s_[..., h_stride:h_stride + HH, w_stride:w_stride + WW]
+            dx_pad[window_slice] += dconv
+    dx = dx_pad[:, :, pad:-pad, pad:-pad]
 
-    pass
+          
+    
+    
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -724,8 +773,21 @@ def max_pool_forward_naive(x, pool_param):
     # TODO: Implement the max-pooling forward pass                            #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-    pass
+    pool_height, pool_width = pool_param["pool_height"], pool_param["pool_width"]
+    stride = pool_param["stride"]
+    N, C, H, W = x.shape
+    Hprime = int(1 + (H - pool_height) / stride)
+    Wprime = int(1 + (W - pool_width) / stride)
+    
+    # Pretty much identical to the forward pass of the convolutional layer
+    # Just replace the convolution/multiplication operation by a np.max call
+    windows =  sliding_window_view(x, (pool_height, pool_width), (2, 3))
+    window_strides = windows[:, :, ::stride, ::stride, :, :]
+    #window_strides = np.moveaxis(window_strides, source=(2, 3), destination=(4, 5))
+    # Reshape the pool axis to one single layer, this makes it better usable 
+    # for the backward pass with argmax
+    out = np.max(window_strides, axis=(-2, -1)).reshape(N, C, Hprime, Wprime)
+    # Generate all remaining indices
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -750,9 +812,27 @@ def max_pool_backward_naive(dout, cache):
     # TODO: Implement the max-pooling backward pass                           #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    x, pool_param = cache
+    dx = np.zeros_like(x)
+    pool_height, pool_width = pool_param["pool_height"], pool_param["pool_width"]
+    stride = pool_param["stride"]
+    N, C, H, W = x.shape
+    Hprime = int(1 + (H - pool_height) / stride)
+    Wprime = int(1 + (W - pool_width) / stride)
 
-    pass
-
+    # Stragy: Loop over all pixels of the output image. For each, identify the corresponding
+    # maxpool window in the input window. Identify the indices of the maximum and add the
+    # upstream gradient only to the element of dx corresponding to the maximum indices
+    for hout in range(Hprime):
+        hin = hout*stride
+        for wout in range(Wprime):
+            win = wout*stride
+            window = x[:, :, hin: hin+pool_height, win: win+pool_width].reshape(N, C, -1)
+            max = np.argmax(window, axis=-1)
+            max_h, max_w = np.unravel_index(max, shape=(pool_height, pool_width))
+            ngrid, cgrid = np.indices(max.shape)
+            dx[ngrid, cgrid, hin+max_h, win+max_w] += dout[ngrid, cgrid, hout, wout]
+    
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
     #                             END OF YOUR CODE                            #
