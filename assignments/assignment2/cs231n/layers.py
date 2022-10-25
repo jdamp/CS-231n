@@ -259,9 +259,12 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         out = xhatgamma + beta
 
         # axis to sum for the backward pass (0 for batch norm, 1 for layer norm)
+        # (0, 2, 3) for spatial group norm
         axis = bn_param.get('axis', 0)
+        # pass additional shape information for the spatial group norm
+        shape = bn_param.get('shape', x.shape)
 
-        cache = (xhat, stdinv, std, var, x_mu, gamma, axis)
+        cache = (xhat, stdinv, std, var, x_mu, gamma, axis, shape)
         # Only use running means for batch norm
         if axis == 0:
           running_mean = momentum * running_mean + (1 - momentum) * mu
@@ -320,20 +323,20 @@ def batchnorm_backward(dout, cache):
     # might prove to be helpful.                                              #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-    xhat, stdinv, std, var, x_mu, gamma, axis = cache
+    xhat, stdinv, std, var, x_mu, gamma, axis, shape = cache
     N, D = dout.shape
     # Go back through the computational graph
     # Following the great explanation found here:
     # https://kratzert.github.io/2016/02/12/understanding-the-gradient-flow-through-the-batch-normalization-layer.html
   
-    # If we use this to run the layernorm backward pass we need to consider
+    # If we use this  to run the layernorm backward pass we need to consider
     # that most elements of the cache are transposed
 
     # 9th step
-    dbeta = dout.sum(axis=axis)
+    dbeta = np.sum(dout.reshape(shape, order="F"), axis=axis)
 
     # 8th step
-    dgamma = (dout * xhat).sum(axis=axis)
+    dgamma = np.sum((dout * xhat).reshape(shape, order="F"), axis=axis)
     dxhat = gamma * dout
 
     # 7th step
@@ -394,11 +397,11 @@ def batchnorm_backward_alt(dout, cache):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    xhat, stdinv, std, var, x_mu, gamma, axis = cache
+    xhat, stdinv, std, var, x_mu, gamma, axis, shape = cache
     n = dout.shape[0]
     
-    dbeta = np.sum(dout, axis=axis)
-    dgamma = np.sum(xhat*dout, axis=axis)
+    dbeta = np.sum(dout.reshape(shape, order="F"), axis=axis)
+    dgamma = np.sum((xhat*dout).reshape(shape, order="F"), axis=axis)
     
     dxhat = dout * gamma
 
@@ -449,14 +452,15 @@ def layernorm_forward(x, gamma, beta, ln_param):
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     # The operation is very similar to what we are doing in batchnorm, but
     # everything is transposed
-    # Since gamma and beta are received as 1D arrays, they are reshaped instead
-    # to insert an additional axis.
+    # Use the atleast_2d method to also make sure that this function works for
+    # the spatial group normalization
     
     # always use training mode
     ln_param.setdefault("mode", "train")
     ln_param.setdefault("axis", 1)
-    out_transposed, cache = batchnorm_forward(x.T, gamma.reshape(-1, 1),
-                                              beta.reshape(-1, 1), ln_param)
+    gamma, beta = np.atleast_2d(gamma, beta)
+
+    out_transposed, cache = batchnorm_forward(x.T, gamma.T, beta.T, ln_param)
     
     out = out_transposed.T
 
@@ -871,8 +875,10 @@ def spatial_batchnorm_forward(x, gamma, beta, bn_param):
     # Your implementation should be very short; ours is less than five lines. #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-    pass
+    x = np.swapaxes(x, axis1=1, axis2=-1)
+    x_flat = x.reshape(-1, x.shape[-1])
+    out_flat, cache = batchnorm_forward(x_flat, gamma, beta, bn_param)
+    out = np.swapaxes(out_flat.reshape(x.shape), axis1=1, axis2=-1)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -904,8 +910,11 @@ def spatial_batchnorm_backward(dout, cache):
     # Your implementation should be very short; ours is less than five lines. #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    dout = np.swapaxes(dout, axis1=1, axis2=-1)
+    dout_flat = dout.reshape(-1, dout.shape[-1])
+    dx_flat, dgamma, dbeta = batchnorm_backward(dout_flat, cache)
+    dx = np.swapaxes(dx_flat.reshape(dout.shape), axis1=1, axis2=-1)
 
-    pass
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -945,9 +954,21 @@ def spatial_groupnorm_forward(x, gamma, beta, G, gn_param):
     # and layer normalization!                                                #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    # shapes
+    N, C, H, W = x.shape
+    shape_in = (N*G, C//G*H*W)
+    shape_out = (N, C, H, W) 
+    #
+    gn_param["axis"] = (0, 1, 3)
+    gn_param["shape"] = (W, H, C, N) # shape_out, but transposed
 
-    pass
+    # Repeat gamma & beta for the indivdual pixels  
+    gamma = np.tile(gamma, (N, 1, H, W)).reshape(shape_in)
+    beta = np.tile(beta, (N, 1, H, W)).reshape(shape_in)
+    out, ln_cache = layernorm_forward(x.reshape(shape_in), gamma, beta, gn_param)
+    out = out.reshape(shape_out)
 
+    cache = (ln_cache, shape_in, shape_out)
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
     #                             END OF YOUR CODE                            #
@@ -974,8 +995,12 @@ def spatial_groupnorm_backward(dout, cache):
     # This will be extremely similar to the layer norm implementation.        #
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-    pass
+    ln_cache, shape_in, shape_out = cache
+    
+    dx, dgamma, dbeta = layernorm_backward(dout.reshape(shape_in), ln_cache)
+    dx = dx.reshape(shape_out)
+    dgamma = dgamma.reshape(1, -1, 1, 1)
+    dbeta = dbeta.reshape(1, -1, 1, 1)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
