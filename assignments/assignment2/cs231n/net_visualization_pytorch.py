@@ -34,7 +34,14 @@ def compute_saliency_maps(X, y, model):
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    scores = model(X)
+    scores = scores.gather(1, y.view(-1, 1)).squeeze()
+    print(X.shape)
+    scores.backward(torch.ones(scores.size()))
+    # Gradient w.r.t the input image:
+    w = X.grad.data.abs()
+    # select maximum magnitude across all color channels:
+    saliency, _ = torch.max(w, dim=1)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -76,7 +83,23 @@ def make_fooling_image(X, target_y, model):
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    for it in range(100):
+        scores = model(X_fooling)
+        pred = torch.argmax(model(X_fooling))
+
+        if pred == target_y:
+            print(f"Successfully generated fooling image after {it} iterations")
+            break
+        if it % 10 == 0:
+            print(f"Performing iteration {it}, current prediction: {pred}")
+
+        target_score = scores[0, target_y]
+        target_score.backward()
+        grad = X_fooling.grad
+        dX = learning_rate * grad / torch.norm(grad)
+        with torch.no_grad():
+            X_fooling+= dX
+
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -94,7 +117,16 @@ def class_visualization_update_step(img, model, target_y, l2_reg, learning_rate)
     ########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    scores = model(img)
+    target_score = scores[0, target_y]
+    # regularization
+    reg_target_score = target_score - l2_reg * torch.linalg.norm(img)
+    reg_target_score.backward()
+    
+        
+    with torch.no_grad():
+        img += learning_rate * img.grad /(img.grad.norm())
+    img.grad.zero_()
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ########################################################################
