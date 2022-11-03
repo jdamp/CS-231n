@@ -73,8 +73,9 @@ def rnn_step_forward(x, prev_h, Wx, Wh, b):
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    next_h = np.tanh(np.dot(prev_h, Wh) + np.dot(x, Wx) + b)
 
+    cache = (x, prev_h, next_h, Wh, Wx)
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
     #                               END OF YOUR CODE                             #
@@ -104,9 +105,18 @@ def rnn_step_backward(dnext_h, cache):
     # of the output value from tanh.                                             #
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    x, prev_h, next_h, Wh, Wx = cache
+    # With u := prev_h.Wh + x.Wx + b and d/du tanh(u) = 1 - tanh(u)**2
 
-    pass
+    du = dnext_h * (1 - next_h**2) # shape (N, H)
+    dWh = np.dot(prev_h.T, du) # shape (H, N) x (N, H) -> (H, H)
+    dWx = np.dot(x.T, du) # shape (D, N) x (N, H) -> (D, H)
+    db = np.sum(du, axis=0)
 
+    dprev_h = np.dot(du, Wh.T) # shape (N, H) x (H, H) -> (N, H)
+    dx = np.dot(du, Wx.T) # shape (N, H) x (H, D) -> (N, D)
+
+    
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
     #                               END OF YOUR CODE                             #
@@ -139,9 +149,17 @@ def rnn_forward(x, h0, Wx, Wh, b):
     # above. You can use a for loop to help compute the forward pass.            #
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-    pass
-
+    cache_steps = []
+    N, T, D = x.shape
+    _, H = h0.shape
+    
+    h = np.zeros((N, T, H))
+    prev_h = h0
+    for t in range(T):
+        h[:,t,:], cache_t = rnn_step_forward(x[:,t,:], prev_h, Wx, Wh, b)
+        cache_steps.append(cache_t)
+        prev_h = h[:,t,:]
+    cache = ((N, T, D, H), cache_steps)
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
     #                               END OF YOUR CODE                             #
@@ -174,8 +192,22 @@ def rnn_backward(dh, cache):
     # defined above. You can use a for loop to help compute the backward pass.   #
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-    pass
+    (N, T, D, H), cache_steps = cache
+    dx = np.zeros((N, T, D))
+    dprev_h = np.zeros((N, H))
+    dWx = np.zeros((D, H))
+    dWh = np.zeros((H, H))
+    db = np.zeros(H)
+    # loop backwards
+    
+    for t in range(T - 1, -1, -1):
+        dx[:,t,:], dprev_h, dWxt, dWht, dbt = rnn_step_backward(dh[:,t,:] + dprev_h,
+                                                                cache_steps[t])
+        dWx += dWxt
+        dWh += dWht
+        db += dbt
+    
+    dh0 = dprev_h
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -208,7 +240,7 @@ def word_embedding_forward(x, W):
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    out, cache = W[x], (W, x)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -242,8 +274,12 @@ def word_embedding_backward(dout, cache):
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
-
+    W, x = cache
+    dW = np.zeros_like(W)
+    # np.add.at: in-place addition dw[x] += dout, but accumulated for elements
+    # that are indexed more than once
+    np.add.at(dW, x, dout)
+    
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
     #                               END OF YOUR CODE                             #

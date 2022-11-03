@@ -148,8 +148,46 @@ class CaptioningRNN:
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        # (1)
+        h0, cache_proj = affine_forward(features, W_proj, b_proj)
+        # (2)
+        x, cache_embed = word_embedding_forward(captions_in, W_embed)
+        # (3)
+        if self.cell_type == "rnn":
+            h, cache_rnn = rnn_forward(x, h0, Wx, Wh, b)
+        else:
+            raise NotImplementedError
+        # (4)
+        out, cache_vocab = temporal_affine_forward(h, W_vocab, b_vocab)
+        # (5)
+        loss, dloss = temporal_softmax_loss(out, captions_out, mask)
 
+
+        # Backward pass:
+        # (4)
+        dout, dW_vocab, db_vocab = temporal_affine_backward(dloss, cache_vocab)
+        # (3)
+        if self.cell_type == "rnn":
+            dx, dh0, dWx, dWh, db = rnn_backward(dout, cache_rnn)
+        else:
+            raise NotImplementedError
+        # (2)
+        dW_embed = word_embedding_backward(dx, cache_embed)
+        # (1)
+        dfeatures, dW_proj, db_proj = affine_backward(dh0, cache_proj)
+
+
+        grads = {
+          "W_proj": dW_proj,
+          "b_proj": db_proj,
+          "W_embed": dW_embed,
+          "Wx": dWx, 
+          "Wh": dWh,
+          "b": db,
+          "W_vocab": dW_vocab,
+          "b_vocab": db_vocab
+        }
+        
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
         #                             END OF YOUR CODE                             #
@@ -215,10 +253,30 @@ class CaptioningRNN:
         # you are using an LSTM, initialize the first cell state to zeros.        #
         ###########################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+        h, cache_proj = affine_forward(features, W_proj, b_proj)
+        # we are still working with batches so we need self._start N times
+        word = np.repeat(self._start, N)
+        for t in range(max_length):
+            # (1) Embed the previous word using the learned word embeddings
+            out, _ = word_embedding_forward(word, W_embed)
 
-        pass
+            # (2) Make an RNN step using the previous hidden state and the embedded 
+            #     current word to get the next hidden state.
+            if self.cell_type == "rnn":
+                h, _ = rnn_step_forward(out, h, Wx, Wh, b)
+            else:
+                raise NotImplementedError
+           
+            # (3) Apply the learned affine transformation to the next hidden state to
+            #     get scores for all words in the vocabulary
+            scores, _ = affine_forward(h, W_vocab, b_vocab)
+            
+            # (4) Select the word with the highest score as the next word, writing it
+            #     (the word index) to the appropriate slot in the captions variable 
+            word = np.argmax(scores, axis=1)
+            captions[:, t] = word
 
-        # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+            # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
