@@ -38,7 +38,12 @@ class PositionalEncoding(nn.Module):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        i = torch.arange(0, max_len)
+        angles = torch.pow(10000, -torch.arange(0, embed_dim, 2)/embed_dim)
+        phases = torch.outer(i, angles)
+        pe[:,:,0::2] = torch.sin(phases)
+        pe[:,:,1::2] = torch.cos(phases)
+                
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -69,8 +74,9 @@ class PositionalEncoding(nn.Module):
         # afterward. This should only take a few lines of code.                    #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-        pass
+        output = torch.add(self.pe[:,:S], x)
+        
+        output = self.dropout(output)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -164,9 +170,22 @@ class MultiHeadAttention(nn.Module):
         #     function masked_fill may come in handy.                              #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+        # comparing to the paper:
+        # E = d_model, S=d_k, T=d_v
+                #must be -1, because S and T could differ
 
-        pass
-
+        H = self.n_head
+        Q = self.query(query).reshape((N, S, H, E//H)).transpose(1, 2)
+        K = self.key(key).reshape((N, T, H, E//H)).transpose(1, 2)
+        V = self.value(value).reshape((N, T, H, E//H)).transpose(1, 2)
+        
+        # scaled dot-product attention by using batched matrix multiply with @
+        scores = Q@(K.transpose(2, 3))/math.sqrt(E/H) # shape (N, H, S, T)
+        if attn_mask is not None:
+            scores.masked_fill_(attn_mask==0, -float("inf"))
+        
+        Y = self.attn_drop(F.softmax(scores, dim=-1)) @ V # shape(N,)
+        output = self.proj(Y.transpose(1, 2).reshape(N, S, E))
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
         #                             END OF YOUR CODE                             #
