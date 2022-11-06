@@ -327,7 +327,21 @@ def lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b):
     #############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    # Calculation of A and split into the four individual terms
+    A = x@Wx + prev_h@Wh + b
+    a_i, a_f, a_o, a_g = np.split(A, 4, axis=1)
+
+    # Forward propagation through the gates
+    f = sigmoid(a_f)
+    i = sigmoid(a_i)
+    g = np.tanh(a_g)
+    o = sigmoid(a_o)
+
+    # outputs
+    next_c = f * prev_c + i * g
+    tanh_next_c = np.tanh(next_c) 
+    next_h = o * tanh_next_c
+    cache = (x, prev_h, prev_c, Wx, Wh, f, i, g, o, tanh_next_c)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -361,8 +375,35 @@ def lstm_step_backward(dnext_h, dnext_c, cache):
     # the output value from the nonlinearity.                                   #
     #############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    (x, prev_h, prev_c, Wx, Wh, f, i, g, o, tanh_next_c) = cache
 
-    pass
+    dnexth_do = dnext_h * tanh_next_c
+    dnexth_dnextc = dnext_h * o * (1 - tanh_next_c**2)
+    dnext_c += dnexth_dnextc
+
+    # Backprop through next_c =  f * prev_c + i * g
+    dnextc_df = dnext_c * prev_c
+    dnextc_dprevc = dnext_c * f
+    dnextc_di = dnext_c * g
+    dnextc_dg = dnext_c * i
+
+    dprev_c = dnextc_dprevc
+
+    # backprop through the gates
+    dnextc_dai = dnextc_di * i * (1 - i)
+    dnextc_daf = dnextc_df * f * (1 - f)
+    dnexth_dao = dnexth_do * o * (1 - o)
+    dnextc_dag = dnextc_dg * (1 - g**2)
+
+    # Finally derivatives of input values:
+    dA = np.hstack((dnextc_dai, dnextc_daf, dnexth_dao, dnextc_dag))
+
+    db = np.sum(dA, axis=0)
+    dWx = x.T@dA
+    dWh = prev_h.T@dA
+    dx = dA@Wx.T
+    dprev_h = dA@Wh.T
+    
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
