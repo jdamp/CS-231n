@@ -155,6 +155,8 @@ class CaptioningRNN:
         # (3)
         if self.cell_type == "rnn":
             h, cache_rnn = rnn_forward(x, h0, Wx, Wh, b)
+        elif self.cell_type == "lstm":
+            h, cache_rnn = lstm_forward(x, h0, Wx, Wh, b)
         else:
             raise NotImplementedError
         # (4)
@@ -169,6 +171,8 @@ class CaptioningRNN:
         # (3)
         if self.cell_type == "rnn":
             dx, dh0, dWx, dWh, db = rnn_backward(dout, cache_rnn)
+        elif self.cell_type == "lstm":
+            dx, dh0, dWx, dWh, db = lstm_backward(dout, cache_rnn)
         else:
             raise NotImplementedError
         # (2)
@@ -254,6 +258,7 @@ class CaptioningRNN:
         ###########################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         h, cache_proj = affine_forward(features, W_proj, b_proj)
+        c = np.zeros_like(h)
         # we are still working with batches so we need self._start N times
         word = np.repeat(self._start, N)
         for t in range(max_length):
@@ -264,6 +269,8 @@ class CaptioningRNN:
             #     current word to get the next hidden state.
             if self.cell_type == "rnn":
                 h, _ = rnn_step_forward(out, h, Wx, Wh, b)
+            elif self.cell_type == "lstm":
+                h, c, _ = lstm_step_forward(out, h, c, Wx, Wh, b)
             else:
                 raise NotImplementedError
            
