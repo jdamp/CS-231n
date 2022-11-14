@@ -18,7 +18,7 @@ def sim(z_i, z_j):
     #                                                                            #
     # HINT: torch.linalg.norm might be helpful.                                  #
     ##############################################################################
-    
+    norm_dot_product = torch.dot(z_i/torch.linalg.norm(z_i), z_j/torch.linalg.norm(z_j))
     
     ##############################################################################
     #                               END OF YOUR CODE                             #
@@ -55,8 +55,16 @@ def simclr_loss_naive(out_left, out_right, tau):
         # Hint: Compute l(k, k+N) and l(k+N, k).                                     #
         ##############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+        numerator = torch.exp(sim(z_k, z_k_N) / tau)
+        
+        sims_k = torch.Tensor([sim(z, z_k)/tau for z in out]).exp()
+        sims_k_N = torch.Tensor([sim(z, z_k_N)/tau for z in out]).exp()
+        denominator_k = torch.sum((torch.arange(2*N) != k) * sims_k)
+        denominator_k_N = torch.sum((torch.arange(2*N) != k+N) * sims_k_N)
 
-        pass
+        total_loss -= torch.log(numerator/denominator_k) + torch.log(numerator/denominator_k_N)
+
+            
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
          ##############################################################################
@@ -89,8 +97,9 @@ def sim_positive_pairs(out_left, out_right):
     ##############################################################################
     
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-    pass
+    norm_left = out_left / torch.linalg.norm(out_left, dim=1, keepdim=True)
+    norm_right = out_right / torch.linalg.norm(out_right, dim=1, keepdim=True)
+    pos_pairs = (norm_left * norm_right).sum(dim=1, keepdim=True)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     
