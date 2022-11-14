@@ -25,4 +25,4 @@ Assigment 1 was taken from an older version of the course, assignments 2 and 3 a
 - [x] [Q2](assignments/assignment3/Transformer_Captioning.ipynb): Image Captioning with Transformers
 - [x] [Q3](assignments/assignment3/Generative_Adversarial_Networks.ipynb): Generative Adversarial Networks
 - [ ] [Q4](assignments/assignment3/Self_Supervised_Learning.ipynb): Self-Supervised Learning for Image Classification
-- [ ] [Q5](assignments/assignment3/LSTM_Captioning.ipynb): Image Captioning with LSTMs
+- [x] [Q5](assignments/assignment3/LSTM_Captioning.ipynb): Image Captioning with LSTMs
